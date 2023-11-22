@@ -1,0 +1,113 @@
+name: Build and Deploy to GKE
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  workflow_dispatch:
+
+env:
+  GAR_LOCATION: us-central1 # TODO: update region of the Artifact Registry
+  GKE_CLUSTER: ${{ secrets.GKE_PROD_CLUSTER_NAME}}    # TODO: update to cluster name
+  GKE_ZONE: ${{ secrets.GKE_PROD_CLUSTER_ZONE}}   # TODO: update to cluster zone
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+
+jobs:
+
+  create-image-and-push-to-dockerhub:
+
+    name: Create Image and Push to Dockerhub
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+        continue-on-error: true
+      
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Log in to Docker Hub
+        run: |
+          docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_TOKEN }}
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_TOKEN: ${{ secrets.DOCKER_TOKEN }}
+      
+      - name: Replace placeholders Image in YML script
+        run: |
+          sed -i "s|image: duretrip/api-gateway:latest|image: duretrip/api-gateway:${{ github.sha }}|" services/api-gateway/docker-compose.yaml
+          sed -i "s|image: duretrip/jet:latest|image: duretrip/jet:${{ github.sha }}|" services/jet/docker-compose.yaml
+
+      - name: Build Docker images
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        run: |
+          docker-compose -f services/api-gateway/docker-compose.yaml build
+          docker-compose -f services/api-gateway/docker-compose.yaml push
+          docker-compose -f services/jet/docker-compose.yaml build
+          docker-compose -f services/jet/docker-compose.yaml push
+        working-directory: .
+
+
+  setup-and-deploy-to-cluster-dev:
+    needs: [create-image-and-push-to-dockerhub]
+
+    name: Setup and Deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Authenticate to Google Cloud
+      uses: google-github-actions/auth@v1
+      with:
+        credentials_json: ${{ secrets.GKE_SA }}
+    - name: Get GKE Credentials
+      uses: google-github-actions/get-gke-credentials@v1
+      with:
+        cluster_name: ${{ secrets.GKE_DEV_CLUSTER_NAME }}
+        location: ${{ secrets.GKE_DEV_CLUSTER_ZONE }}
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+
+    - name: Replace placeholders in YML script
+      run: |
+          sed -i "s/\${PASSWORDE}/${{ secrets.DATABASE_MASTER_BASE_PASSWORD }}/g" k8s/Postgress/postgress-secrets.yml
+          sed -i "s/\${SECRET}/${{ secrets.JWT_SECRET }}/g" k8s/Postgress/postgress-secrets.yml
+          sed -i "s/\${AUTH_DATABASE_URL}/${{ secrets.AUTH_DATABASE_URL }}/g" k8s/Postgress/postgress-secrets.yml
+          sed -i "s/\${JET_DATABASE_URL}/${{ secrets.JET_DATABASE_URL }}/g" k8s/Postgress/postgress-secrets.yml
+    
+    - name: Replace placeholders Image in YML script
+      run: |
+          sed -i "s|image: duretrip/api-gateway:latest|image: duretrip/api-gateway:${{ github.sha }}|" k8s/api-gateway.yml
+          sed -i "s|image: duretrip/jet:latest|image: duretrip/jet:${{ github.sha }}|" k8s/jet.yml
+    
+    - name: Deploy on the GKE
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        CT_TYPE: "api"
+      run: |-
+        kubectl apply -f k8s/Postgress/postgress-configMap.yml
+        kubectl apply -f k8s/Postgress/postgress-secrets.yml 
+        kubectl apply -f k8s/ingress/ingress-service-dev.yml
+        kubectl apply -f k8s/api-gateway.yml
+        kubectl apply -f k8s/jet.yml
+
+
+  
+
+
+    
+       

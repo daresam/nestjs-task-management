@@ -1,0 +1,227 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway-app
+  labels:
+    app: api-gateway-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-gateway-app
+  template:
+    metadata:
+      labels:
+        app: api-gateway-app
+    spec:
+      containers:
+        - name: api-gateway-app
+          image: duretrip/api-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8006
+          resources:
+            requests:
+              memory: "500Mi"
+              cpu: "0.2"
+            limits:
+              memory: "1Gi"
+              cpu: "0.5"
+          env:
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=4096"
+
+            - name: REDIS_HOST
+              value: host.docker.internal
+
+            - name: REDIS_PORT
+              value: "6379"
+
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: password
+
+            - name: DATABASE_TYPE
+              value: postgres
+
+            - name: DATABASE_NAME
+              value: auth_dbb
+
+            - name: DATABASE_HOST
+              value: "34.28.62.57"
+
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: auth-prisma-url
+                  key: url
+
+            - name: DATABASE_PORT
+              value: "5432"
+
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: jwt-secret
+                  key: username
+
+            - name: DATABASE_USERNAME
+              value: postgres
+
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: password
+
+            - name: MAIL_HOST
+              value: "10.24.5.185"
+            
+            - name: MAIL_PORT
+              value: "1025"
+            
+            - name: MAIL_USER
+              value: ""
+
+            - name: MAIL_PASSWORD
+              value: ""
+
+            - name: MAIL_IGNORE_TLS
+              value: "true"
+
+            - name: MAIL_SECURE
+              value: "false"
+
+            - name: MAIL_REQUIRE_TLS
+              value: "false"
+
+            - name: MAIL_DEFAULT_EMAIL
+              value: "info@duretrip.com"
+
+            - name: MAIL_DEFAULT_NAME
+              value: "DureTrip"
+
+            - name: MAIL_CLIENT_PORT
+              value: "80"
+
+            - name: FILE_DRIVER
+              value: "local"
+
+            - name: ACCESS_KEY_ID
+              value: ""
+
+            - name: AWS_S3_REGION
+              value: ""
+
+            - name: AWS_DEFAULT_S3_BUCKET
+              value: ""
+
+            - name: WORKER_HOST
+              value: redis://10.24.5.212:6380/1
+
+            - name: FRONTEND_DOMAIN
+              value: http://dev.duretrip.com
+
+            - name: BACKEND_DOMAIN
+              value: http://dev-api.duretrip.com
+
+            - name: APP_NAME
+              value: Duretrip
+
+            - name: API_PREFIX
+              value: ""
+
+            - name: APP_FALLBACK_LANGUAGE
+              value: en
+
+            - name: APP_HEADER_LANGUAGE
+              value: x-custom-lang
+
+            - name: RABBITMQ_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_HOST
+
+            - name: RABBITMQ_DEFAULT_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_USER
+
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_PASS
+
+            - name: RABBITMQ_USER
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_USER
+
+            - name: RABBITMQ_PASS
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_PASS
+
+            - name: RABBITMQ_CONECTION_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_URL
+
+            - name: RABBITMQ_PAYMENT_QUEUE
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_PAYMENT_QUEUE
+
+            - name: RABBITMQ_API_GATEWAY_QUEUE
+              value: api-gateway-queue
+
+            - name: RABBITMQ_AUTH_QUEUE
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_AUTH_QUEUE
+
+            - name: RABBITMQ_HOTEL_QUEUE
+              valueFrom:
+                configMapKeyRef:
+                  name: rabbitmq-config
+                  key: RABBITMQ_HOTEL_QUEUE
+
+            - name: AUTH_JWT_SECRET
+              value: secret
+
+            - name: AUTH_JWT_TOKEN_EXPIRES_IN
+              value: '10080m'
+
+            - name: AUTH_REFRESH_SECRET
+              value: secret_for_refresh
+
+            - name: AUTH_REFRESH_TOKEN_EXPIRES_IN
+              value: 3650d
+
+            - name: APP_PORT
+              value: "8006"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway-svc
+spec:
+  selector:
+    app: api-gateway-app
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8006
+      protocol: TCP
